@@ -1,4 +1,7 @@
 import { writeFile } from "node:fs/promises";
+import crypto from "node:crypto";
+import tls from "node:tls";
+import net from "node:net";
 
 const envValue = (name) => {
   const value = process.env[name]?.trim();
@@ -154,11 +157,164 @@ const getLatestGraphValue = (message) => {
   };
 };
 
-const fetchGraphHubData = async (jar) => {
-  if (typeof WebSocket === "undefined") {
-    throw new Error("WebSocket is not available in this Node.js runtime.");
-  }
+const createWebSocketConnection = (urlString) => {
+  const url = new URL(urlString);
+  const secure = url.protocol === "wss:";
+  const port = Number(url.port || (secure ? 443 : 80));
+  const path = `${url.pathname}${url.search}`;
+  const key = crypto.randomBytes(16).toString("base64");
+  const socket = secure
+    ? tls.connect({ host: url.hostname, port, servername: url.hostname })
+    : net.connect({ host: url.hostname, port });
+  let buffer = Buffer.alloc(0);
+  let handshakeDone = false;
+  let textBuffer = "";
+  let closed = false;
+  const messageHandlers = new Set();
+  const errorHandlers = new Set();
+  const openHandlers = new Set();
+  const closeHandlers = new Set();
 
+  const emit = (handlers, value) => {
+    for (const handler of handlers) {
+      handler(value);
+    }
+  };
+
+  const parseFrames = () => {
+    while (buffer.length >= 2) {
+      const first = buffer[0];
+      const second = buffer[1];
+      const opcode = first & 0x0f;
+      let offset = 2;
+      let length = second & 0x7f;
+      if (length === 126) {
+        if (buffer.length < offset + 2) return;
+        length = buffer.readUInt16BE(offset);
+        offset += 2;
+      } else if (length === 127) {
+        if (buffer.length < offset + 8) return;
+        const high = buffer.readUInt32BE(offset);
+        const low = buffer.readUInt32BE(offset + 4);
+        length = high * 2 ** 32 + low;
+        offset += 8;
+      }
+      const masked = Boolean(second & 0x80);
+      let mask;
+      if (masked) {
+        if (buffer.length < offset + 4) return;
+        mask = buffer.subarray(offset, offset + 4);
+        offset += 4;
+      }
+      if (buffer.length < offset + length) return;
+      let payload = buffer.subarray(offset, offset + length);
+      buffer = buffer.subarray(offset + length);
+      if (masked && mask) {
+        payload = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
+      }
+
+      if (opcode === 0x8) {
+        closed = true;
+        socket.end();
+        emit(closeHandlers);
+        return;
+      }
+      if (opcode === 0x9) {
+        sendFrame(payload, 0xA);
+        continue;
+      }
+      if (opcode === 0x1 || opcode === 0x0) {
+        textBuffer += payload.toString("utf8");
+        if (first & 0x80) {
+          emit(messageHandlers, textBuffer);
+          textBuffer = "";
+        }
+      }
+    }
+  };
+
+  const sendFrame = (payloadInput, opcode = 0x1) => {
+    if (closed) return;
+    const payload = Buffer.isBuffer(payloadInput) ? payloadInput : Buffer.from(`${payloadInput}`, "utf8");
+    const length = payload.length;
+    const lengthBytes = length < 126 ? 0 : length <= 65535 ? 2 : 8;
+    const header = Buffer.alloc(2 + lengthBytes + 4);
+    header[0] = 0x80 | opcode;
+    if (length < 126) {
+      header[1] = 0x80 | length;
+    } else if (length <= 65535) {
+      header[1] = 0x80 | 126;
+      header.writeUInt16BE(length, 2);
+    } else {
+      header[1] = 0x80 | 127;
+      header.writeUInt32BE(Math.floor(length / 2 ** 32), 2);
+      header.writeUInt32BE(length >>> 0, 6);
+    }
+    const maskOffset = 2 + lengthBytes;
+    const mask = crypto.randomBytes(4);
+    mask.copy(header, maskOffset);
+    const maskedPayload = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
+    socket.write(Buffer.concat([header, maskedPayload]));
+  };
+
+  socket.on("connect", () => {
+    socket.write([
+      `GET ${path} HTTP/1.1`,
+      `Host: ${url.host}`,
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Key: ${key}`,
+      "Sec-WebSocket-Version: 13",
+      "User-Agent: kushima-welcome-action",
+      "",
+      "",
+    ].join("\r\n"));
+  });
+
+  socket.on("data", (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    if (!handshakeDone) {
+      const headerEnd = buffer.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+      const header = buffer.subarray(0, headerEnd).toString("utf8");
+      if (!/^HTTP\/1\.1 101/i.test(header)) {
+        emit(errorHandlers, new Error(`WebSocket handshake failed: ${header.split("\r\n")[0]}`));
+        socket.end();
+        return;
+      }
+      handshakeDone = true;
+      buffer = buffer.subarray(headerEnd + 4);
+      emit(openHandlers);
+    }
+    parseFrames();
+  });
+
+  socket.on("error", (error) => emit(errorHandlers, error));
+  socket.on("close", () => {
+    if (!closed) {
+      closed = true;
+      emit(closeHandlers);
+    }
+  });
+
+  return {
+    onOpen: (handler) => openHandlers.add(handler),
+    onMessage: (handler) => messageHandlers.add(handler),
+    onError: (handler) => errorHandlers.add(handler),
+    send: (text) => sendFrame(text),
+    close: () => {
+      closed = true;
+      try {
+        sendFrame(Buffer.alloc(0), 0x8);
+      } catch {
+        socket.end();
+      }
+      socket.end();
+    },
+  };
+};
+
+const fetchGraphHubData = async (jar) => {
   const negotiateUrl = new URL("GraphHub/negotiate?negotiateVersion=1", BASE_URL).toString();
   const negotiateResponse = await fetch(negotiateUrl, {
     method: "POST",
@@ -187,15 +343,15 @@ const fetchGraphHubData = async (jar) => {
   const start = new Date(end.getTime() - 1000 * 60 * 60 * 24 * 2);
 
   await new Promise((resolve, reject) => {
-    const socket = new WebSocket(websocketUrl.toString());
+    const socket = createWebSocketConnection(websocketUrl.toString());
     const timeout = setTimeout(() => {
       try {
         socket.close();
       } catch {
         // ignore close errors
       }
-      reject(new Error("GraphHub timed out before receiving WBGT data."));
-    }, 20000);
+        reject(new Error("GraphHub timed out before receiving WBGT data."));
+      }, 20000);
 
     const finishIfReady = () => {
       if (latestByLabel.has("暑さ指数") && latestByLabel.has("湿度") && (latestByLabel.has("気温") || latestByLabel.has("温度"))) {
@@ -209,7 +365,7 @@ const fetchGraphHubData = async (jar) => {
       }
     };
 
-    socket.addEventListener("open", () => {
+    socket.onOpen(() => {
       socket.send(signalRFrame({ protocol: "json", version: 1 }));
       socket.send(signalRFrame({
         type: 1,
@@ -224,8 +380,8 @@ const fetchGraphHubData = async (jar) => {
       }));
     });
 
-    socket.addEventListener("message", (event) => {
-      for (const message of parseSignalRFrames(event.data)) {
+    socket.onMessage((data) => {
+      for (const message of parseSignalRFrames(data)) {
         const latest = getLatestGraphValue(message);
         if (latest) {
           latestByLabel.set(latest.label, latest);
@@ -234,9 +390,9 @@ const fetchGraphHubData = async (jar) => {
       finishIfReady();
     });
 
-    socket.addEventListener("error", () => {
+    socket.onError((error) => {
       clearTimeout(timeout);
-      reject(new Error("GraphHub websocket error."));
+      reject(error instanceof Error ? error : new Error("GraphHub websocket error."));
     });
   });
 
