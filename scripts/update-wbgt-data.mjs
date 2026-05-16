@@ -14,6 +14,7 @@ const LOGIN_ID = envValue("WBGT_LOGIN_ID");
 const PASSWORD = envValue("WBGT_PASSWORD");
 const DATA_URL = envValue("WBGT_DATA_URL");
 const OUTPUT_PATH = process.env.WBGT_OUTPUT_PATH ?? "wbgt-live.json";
+const BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36";
 
 const demoData = {
   status: "demo",
@@ -51,6 +52,13 @@ const mergeCookies = (jar, headers) => {
 };
 
 const cookieHeader = (jar) => Array.from(jar.values()).join("; ");
+
+const browserHeaders = (jar) => ({
+  "User-Agent": BROWSER_USER_AGENT,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+  ...(jar && cookieHeader(jar) ? { Cookie: cookieHeader(jar) } : {}),
+});
 
 const decodeHtml = (text) =>
   text
@@ -314,8 +322,12 @@ const createWebSocketConnection = (urlString, extraHeaders = {}) => {
       "Connection: Upgrade",
       `Sec-WebSocket-Key: ${key}`,
       "Sec-WebSocket-Version: 13",
-      "User-Agent: kushima-welcome-action",
+      `User-Agent: ${BROWSER_USER_AGENT}`,
       `Origin: ${BASE_URL.replace(/\/$/, "")}`,
+      `Referer: ${BASE_URL}`,
+      "Accept-Language: ja,en-US;q=0.9,en;q=0.8",
+      "Cache-Control: no-cache",
+      "Pragma: no-cache",
       ...headerLines,
       "",
       "",
@@ -370,7 +382,12 @@ const fetchGraphHubData = async (jar) => {
   const negotiateResponse = await fetch(negotiateUrl, {
     method: "POST",
     headers: {
+      "User-Agent": BROWSER_USER_AGENT,
+      Accept: "*/*",
+      "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
       Cookie: cookieHeader(jar),
+      Origin: BASE_URL.replace(/\/$/, ""),
+      Referer: BASE_URL,
       "X-Requested-With": "XMLHttpRequest",
     },
   });
@@ -584,21 +601,23 @@ const loginAndFetchHtml = async () => {
   }
 
   const jar = new Map();
-  const firstResponse = await fetch(BASE_URL, { redirect: "manual" });
+  const firstResponse = await fetch(BASE_URL, {
+    redirect: "manual",
+    headers: browserHeaders(),
+  });
   mergeCookies(jar, firstResponse.headers);
   const loginPageUrl = new URL("/Account/Login?ReturnUrl=%2Fwbgtmonitoring%2F", SITE_ORIGIN).toString();
   const loginPageResponse = await fetch(loginPageUrl, {
     redirect: "manual",
-    headers: {
-      Cookie: cookieHeader(jar),
-    },
+    headers: browserHeaders(jar),
   });
   mergeCookies(jar, loginPageResponse.headers);
-  const loginHtml = await loginPageResponse.text();
+  const loginHtml = loginPageResponse.ok ? await loginPageResponse.text() : "";
   const tokenMatch = loginHtml.match(/name="__RequestVerificationToken"\s+type="hidden"\s+value="([^"]+)"/i)
     ?? loginHtml.match(/type="hidden"\s+value="([^"]+)"\s+name="__RequestVerificationToken"/i);
+  const formAction = loginHtml.match(/<form[^>]*action=["']?([^"'\s>]+)/i)?.[1];
 
-  const loginUrl = loginPageUrl;
+  const loginUrl = formAction ? new URL(formAction, loginPageUrl).toString() : loginPageUrl;
   const form = new URLSearchParams();
   form.set("Input.LoginId", LOGIN_ID);
   form.set("Input.Password", PASSWORD);
@@ -607,26 +626,28 @@ const loginAndFetchHtml = async () => {
     form.set("__RequestVerificationToken", tokenMatch[1]);
   }
 
-  const loginResponse = await fetch(loginUrl, {
-    method: "POST",
-    redirect: "manual",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Cookie: cookieHeader(jar),
-    },
-    body: form,
-  });
-  mergeCookies(jar, loginResponse.headers);
-
-  if (loginResponse.status >= 400) {
-    throw new Error(`WBGT login request failed: ${loginResponse.status} ${loginUrl}`);
+  let loginStatus = `login page ${loginPageResponse.status} ${loginPageUrl}`;
+  if (loginHtml && (tokenMatch?.[1] || /LoginId|Password/i.test(loginHtml))) {
+    const loginResponse = await fetch(loginUrl, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        ...browserHeaders(jar),
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: SITE_ORIGIN,
+        Referer: loginPageUrl,
+      },
+      body: form,
+    });
+    mergeCookies(jar, loginResponse.headers);
+    loginStatus = `login post ${loginResponse.status} ${loginUrl}`;
   }
 
   let graphHubError;
   try {
     return await fetchGraphHubData(jar);
   } catch (error) {
-    graphHubError = error;
+    graphHubError = new Error(`${error instanceof Error ? error.message : error}; ${loginStatus}`);
     console.warn(error instanceof Error ? error.message : error);
   }
 
@@ -644,9 +665,7 @@ const loginAndFetchHtml = async () => {
   let lastStatus = "";
   for (const targetUrl of [...new Set(candidates)]) {
     const pageResponse = await fetch(targetUrl, {
-      headers: {
-        Cookie: cookieHeader(jar),
-      },
+      headers: browserHeaders(jar),
     });
     lastStatus = `${pageResponse.status} ${targetUrl}`;
     if (!pageResponse.ok) {
