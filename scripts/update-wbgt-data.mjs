@@ -96,7 +96,7 @@ const formatDateTimeJst = (date) => {
 
 const buildGraphItems = () => {
   const location = envValue("WBGT_GRAPH_LOCATION") ?? "13";
-  const groups = (envValue("WBGT_GRAPH_GROUPS") ?? "1070,1071")
+  const groups = (envValue("WBGT_GRAPH_GROUPS") ?? "1071")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
