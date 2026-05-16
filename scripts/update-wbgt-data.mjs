@@ -627,6 +627,7 @@ const loginAndFetchHtml = async () => {
   }
 
   let loginStatus = `login page ${loginPageResponse.status} ${loginPageUrl}`;
+  let redirectedUrl;
   if (loginHtml && (tokenMatch?.[1] || /LoginId|Password/i.test(loginHtml))) {
     const loginResponse = await fetch(loginUrl, {
       method: "POST",
@@ -641,6 +642,9 @@ const loginAndFetchHtml = async () => {
     });
     mergeCookies(jar, loginResponse.headers);
     loginStatus = `login post ${loginResponse.status} ${loginUrl}`;
+    redirectedUrl = loginResponse.headers.get("location")
+      ? new URL(loginResponse.headers.get("location"), BASE_URL).toString()
+      : undefined;
   }
 
   let graphHubError;
@@ -651,9 +655,6 @@ const loginAndFetchHtml = async () => {
     console.warn(error instanceof Error ? error.message : error);
   }
 
-  const redirectedUrl = loginResponse.headers.get("location")
-    ? new URL(loginResponse.headers.get("location"), BASE_URL).toString()
-    : undefined;
   const candidates = [
     envValue("WBGT_TARGET_URL"),
     redirectedUrl,
