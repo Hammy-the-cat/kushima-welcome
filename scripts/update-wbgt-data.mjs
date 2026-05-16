@@ -157,7 +157,7 @@ const getLatestGraphValue = (message) => {
   };
 };
 
-const createWebSocketConnection = (urlString) => {
+const createWebSocketConnection = (urlString, extraHeaders = {}) => {
   const url = new URL(urlString);
   const secure = url.protocol === "wss:";
   const port = Number(url.port || (secure ? 443 : 80));
@@ -258,6 +258,9 @@ const createWebSocketConnection = (urlString) => {
   };
 
   socket.on("connect", () => {
+    const headerLines = Object.entries(extraHeaders)
+      .filter(([, value]) => value)
+      .map(([name, value]) => `${name}: ${value}`);
     socket.write([
       `GET ${path} HTTP/1.1`,
       `Host: ${url.host}`,
@@ -266,6 +269,8 @@ const createWebSocketConnection = (urlString) => {
       `Sec-WebSocket-Key: ${key}`,
       "Sec-WebSocket-Version: 13",
       "User-Agent: kushima-welcome-action",
+      `Origin: ${BASE_URL.replace(/\/$/, "")}`,
+      ...headerLines,
       "",
       "",
     ].join("\r\n"));
@@ -343,7 +348,9 @@ const fetchGraphHubData = async (jar) => {
   const start = new Date(end.getTime() - 1000 * 60 * 60 * 24 * 2);
 
   await new Promise((resolve, reject) => {
-    const socket = createWebSocketConnection(websocketUrl.toString());
+    const socket = createWebSocketConnection(websocketUrl.toString(), {
+      Cookie: cookieHeader(jar),
+    });
     const timeout = setTimeout(() => {
       try {
         socket.close();
@@ -354,7 +361,7 @@ const fetchGraphHubData = async (jar) => {
       }, 20000);
 
     const finishIfReady = () => {
-      if (latestByLabel.has("暑さ指数") && latestByLabel.has("湿度") && (latestByLabel.has("気温") || latestByLabel.has("温度"))) {
+      if (latestByLabel.has("暑さ指数") && latestByLabel.has("湿度")) {
         clearTimeout(timeout);
         try {
           socket.close();
@@ -513,9 +520,11 @@ const loginAndFetchHtml = async () => {
   });
   mergeCookies(jar, loginResponse.headers);
 
+  let graphHubError;
   try {
     return await fetchGraphHubData(jar);
   } catch (error) {
+    graphHubError = error;
     console.warn(error instanceof Error ? error.message : error);
   }
 
@@ -548,7 +557,8 @@ const loginAndFetchHtml = async () => {
   }
 
   if (!html) {
-    throw new Error(`WBGT page request failed: ${lastStatus}`);
+    const graphHubMessage = graphHubError instanceof Error ? graphHubError.message : `${graphHubError}`;
+    throw new Error(`GraphHub failed: ${graphHubMessage}; WBGT page request failed: ${lastStatus}`);
   }
 
   if (/Account\/Login|ログイン|LoginId|Password/i.test(html)) {
