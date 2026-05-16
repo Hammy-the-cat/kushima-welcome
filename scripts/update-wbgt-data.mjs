@@ -96,6 +96,14 @@ const formatDateTimeJst = (date) => {
 
 const buildGraphItems = () => {
   const location = envValue("WBGT_GRAPH_LOCATION") ?? "13";
+  if (!envValue("WBGT_GRAPH_GROUPS") && !envValue("WBGT_GRAPH_SENSORS") && location === "13") {
+    return [
+      { index: 3, location: "13", data: "0-1071-17", objId: "graph_13_1071_17" },
+      { index: 4, location: "13", data: "0-1071-14", objId: "graph_13_1071_14" },
+      { index: 5, location: "13", data: "0-1071-15", objId: "graph_13_1071_15" },
+    ];
+  }
+
   const groups = (envValue("WBGT_GRAPH_GROUPS") ?? "1071")
     .split(",")
     .map((value) => value.trim())
@@ -105,7 +113,7 @@ const buildGraphItems = () => {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  let index = 0;
+  let index = Number(envValue("WBGT_GRAPH_INDEX_OFFSET") ?? 0);
   return groups.flatMap((group) =>
     sensors.map((sensor) => {
       const data = `0-${group}-${sensor}`;
