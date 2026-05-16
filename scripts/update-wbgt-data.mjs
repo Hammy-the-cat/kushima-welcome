@@ -9,6 +9,7 @@ const envValue = (name) => {
 };
 
 const BASE_URL = envValue("WBGT_BASE_URL") ?? "https://takanabe.aimnextiot.com/wbgtmonitoring/";
+const SITE_ORIGIN = new URL(BASE_URL).origin;
 const LOGIN_ID = envValue("WBGT_LOGIN_ID");
 const PASSWORD = envValue("WBGT_PASSWORD");
 const DATA_URL = envValue("WBGT_DATA_URL");
@@ -585,9 +586,7 @@ const loginAndFetchHtml = async () => {
   const jar = new Map();
   const firstResponse = await fetch(BASE_URL, { redirect: "manual" });
   mergeCookies(jar, firstResponse.headers);
-  const loginPageUrl = firstResponse.headers.get("location")
-    ? new URL(firstResponse.headers.get("location"), BASE_URL).toString()
-    : new URL("/Account/Login?ReturnUrl=%2Fwbgtmonitoring%2F", BASE_URL).toString();
+  const loginPageUrl = new URL("/Account/Login?ReturnUrl=%2Fwbgtmonitoring%2F", SITE_ORIGIN).toString();
   const loginPageResponse = await fetch(loginPageUrl, {
     redirect: "manual",
     headers: {
