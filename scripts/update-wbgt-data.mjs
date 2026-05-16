@@ -1,9 +1,14 @@
 import { writeFile } from "node:fs/promises";
 
-const BASE_URL = process.env.WBGT_BASE_URL ?? "https://takanabe.aimnextiot.com/wbgtmonitoring/";
-const LOGIN_ID = process.env.WBGT_LOGIN_ID;
-const PASSWORD = process.env.WBGT_PASSWORD;
-const DATA_URL = process.env.WBGT_DATA_URL;
+const envValue = (name) => {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+};
+
+const BASE_URL = envValue("WBGT_BASE_URL") ?? "https://takanabe.aimnextiot.com/wbgtmonitoring/";
+const LOGIN_ID = envValue("WBGT_LOGIN_ID");
+const PASSWORD = envValue("WBGT_PASSWORD");
+const DATA_URL = envValue("WBGT_DATA_URL");
 const OUTPUT_PATH = process.env.WBGT_OUTPUT_PATH ?? "wbgt-live.json";
 
 const demoData = {
@@ -170,7 +175,7 @@ const loginAndFetchHtml = async () => {
   });
   mergeCookies(jar, loginResponse.headers);
 
-  const targetUrl = process.env.WBGT_TARGET_URL ?? BASE_URL;
+  const targetUrl = envValue("WBGT_TARGET_URL") ?? BASE_URL;
   const pageResponse = await fetch(targetUrl, {
     headers: {
       Cookie: cookieHeader(jar),
