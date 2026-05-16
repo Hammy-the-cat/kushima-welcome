@@ -135,6 +135,34 @@ const parseSignalRFrames = (raw) =>
     })
     .filter(Boolean);
 
+const summarizeGraphHubMessage = (message) => {
+  const summary = {
+    type: message?.type,
+    target: message?.target,
+  };
+  if (message?.invocationId != null) {
+    summary.invocationId = message.invocationId;
+  }
+  if (Array.isArray(message?.arguments)) {
+    summary.arguments = message.arguments.map((argument) => {
+      if (Array.isArray(argument)) {
+        return `array(${argument.length})`;
+      }
+      if (argument && typeof argument === "object") {
+        return JSON.stringify(argument).slice(0, 180);
+      }
+      return argument;
+    });
+  }
+  if (message?.error) {
+    summary.error = message.error;
+  }
+  if (message?.result != null) {
+    summary.result = message.result;
+  }
+  return JSON.stringify(summary);
+};
+
 const getLatestGraphValue = (message) => {
   if (message?.target !== "updateGraph" || !Array.isArray(message.arguments)) {
     return null;
@@ -346,6 +374,7 @@ const fetchGraphHubData = async (jar) => {
   const latestByLabel = new Map();
   const observedLabels = new Set();
   const observedTargets = new Set();
+  const observedMessages = [];
   let messageCount = 0;
 
   await new Promise((resolve, reject) => {
@@ -362,7 +391,8 @@ const fetchGraphHubData = async (jar) => {
       }
       const labels = Array.from(observedLabels).join(", ") || "none";
       const targets = Array.from(observedTargets).join(", ") || "none";
-      reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}`));
+      const previews = observedMessages.join(" | ") || "none";
+      reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}; previews=${previews}`));
       }, 20000);
 
     const requestGraphData = () => {
@@ -403,6 +433,9 @@ const fetchGraphHubData = async (jar) => {
         }
         if (message.target) {
           observedTargets.add(message.target);
+        }
+        if (observedMessages.length < 8) {
+          observedMessages.push(summarizeGraphHubMessage(message));
         }
         const latest = getLatestGraphValue(message);
         if (latest) {
