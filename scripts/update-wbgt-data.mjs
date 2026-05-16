@@ -378,32 +378,9 @@ const createWebSocketConnection = (urlString, extraHeaders = {}) => {
 };
 
 const fetchGraphHubData = async (jar) => {
-  const negotiateUrl = new URL("GraphHub/negotiate?negotiateVersion=1", BASE_URL).toString();
-  const negotiateResponse = await fetch(negotiateUrl, {
-    method: "POST",
-    headers: {
-      "User-Agent": BROWSER_USER_AGENT,
-      Accept: "*/*",
-      "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-      Cookie: cookieHeader(jar),
-      Origin: SITE_ORIGIN,
-      Referer: BASE_URL,
-      "X-Requested-With": "XMLHttpRequest",
-    },
-  });
-  if (!negotiateResponse.ok) {
-    throw new Error(`GraphHub negotiate failed: ${negotiateResponse.status}`);
-  }
-  mergeCookies(jar, negotiateResponse.headers);
-  const negotiate = await negotiateResponse.json();
-  const connectionId = negotiate.connectionToken ?? negotiate.connectionId;
-  if (!connectionId) {
-    throw new Error("GraphHub negotiate response did not include connection id.");
-  }
-
-  const websocketUrl = new URL("GraphHub", BASE_URL);
-  websocketUrl.protocol = websocketUrl.protocol === "https:" ? "wss:" : "ws:";
-  websocketUrl.searchParams.set("id", connectionId);
+  const { default: WebSocket } = await import("ws");
+  globalThis.WebSocket = WebSocket;
+  const signalR = await import("@microsoft/signalr");
 
   const graphItems = buildGraphItems();
   const latestByLabel = new Map();
@@ -412,103 +389,78 @@ const fetchGraphHubData = async (jar) => {
   const observedMessages = [];
   const sentRequests = [];
   let messageCount = 0;
-
-  await new Promise((resolve, reject) => {
-    const socket = createWebSocketConnection(websocketUrl.toString(), {
-      Cookie: cookieHeader(jar),
-    });
-    let graphRequested = false;
-    let retryRequested = false;
-    let fallbackStartTimer;
-    let pingTimer;
-    let retryTimer;
-    const timeout = setTimeout(() => {
-      try {
-        socket.close();
-      } catch {
-        // ignore close errors
-      }
-      clearTimeout(fallbackStartTimer);
-      clearTimeout(retryTimer);
-      clearInterval(pingTimer);
-      const labels = Array.from(observedLabels).join(", ") || "none";
-      const targets = Array.from(observedTargets).join(", ") || "none";
-      const previews = observedMessages.join(" | ") || "none";
-      const requests = sentRequests.join(" | ") || "none";
-      reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}; sent=${requests}; previews=${previews}`));
-      }, 45000);
-
-    const requestGraphData = (items = graphItems, invocationId = "0") => {
-      sentRequests.push(`${invocationId}:${items.map((item) => `${item.index}/${item.data}`).join(",")}`);
-      socket.send(signalRFrame({
-        type: 1,
-        invocationId,
-        target: "addAllGraph",
-        arguments: [new Date().toISOString(), 14, items],
-      }));
-    };
-
-    const requestInitialGraphData = () => {
-      if (graphRequested) return;
-      graphRequested = true;
-      requestGraphData(graphItems, "0");
-    };
-
-    const finishIfReady = () => {
-      if (latestByLabel.has("暑さ指数")) {
-        clearTimeout(timeout);
-        clearTimeout(fallbackStartTimer);
-        clearTimeout(retryTimer);
-        clearInterval(pingTimer);
-        try {
-          socket.close();
-        } catch {
-          // ignore close errors
-        }
-        resolve();
-      }
-    };
-
-    socket.onOpen(() => {
-      socket.send(signalRFrame({ protocol: "json", version: 1 }));
-      pingTimer = setInterval(() => socket.send(signalRFrame({ type: 6 })), 15000);
-      fallbackStartTimer = setTimeout(requestInitialGraphData, 1000);
-    });
-
-    socket.onMessage((data) => {
-      const messages = parseSignalRFrames(data);
-      messageCount += messages.length;
-      for (const message of messages) {
-        if (!graphRequested && Object.keys(message).length === 0) {
-          requestInitialGraphData();
-        }
-        if (message.target) {
-          observedTargets.add(message.target);
-        }
-        if (observedMessages.length < 8) {
-          observedMessages.push(summarizeGraphHubMessage(message));
-        }
-        const latest = getLatestGraphValue(message);
-        if (latest) {
-          observedLabels.add(latest.label);
-          latestByLabel.set(latest.label, latest);
-        }
-        if (!retryRequested && message.type === 3 && message.invocationId === "0" && !latestByLabel.has("暑さ指数")) {
-          retryRequested = true;
-          retryTimer = setTimeout(() => requestGraphData(activeGraphItems(), "1"), 1000);
-        }
-      }
-      finishIfReady();
-    });
-
-    socket.onError((error) => {
-      clearTimeout(timeout);
-      clearTimeout(fallbackStartTimer);
-      clearTimeout(retryTimer);
-      clearInterval(pingTimer);
-      reject(error instanceof Error ? error : new Error("GraphHub websocket error."));
-    });
+  let resolveWhenReady;
+  const ready = new Promise((resolve) => {
+    resolveWhenReady = resolve;
   });
+
+  const rememberMessage = (message) => {
+    messageCount += 1;
+    if (message.target) {
+      observedTargets.add(message.target);
+    }
+    if (observedMessages.length < 10) {
+      observedMessages.push(summarizeGraphHubMessage(message));
+    }
+  };
+
+  const recordGraphValue = (...args) => {
+    const message = { type: 1, target: "updateGraph", arguments: args };
+    rememberMessage(message);
+    const latest = getLatestGraphValue(message);
+    if (latest) {
+      observedLabels.add(latest.label);
+      latestByLabel.set(latest.label, latest);
+      if (latest.label === "暑さ指数") {
+        resolveWhenReady();
+      }
+    }
+  };
+
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(new URL("GraphHub", BASE_URL).toString(), {
+      transport: signalR.HttpTransportType.WebSockets,
+      headers: {
+        ...browserHeaders(jar),
+        Accept: "*/*",
+        Origin: SITE_ORIGIN,
+        Referer: BASE_URL,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    })
+    .configureLogging(signalR.LogLevel.Warning)
+    .build();
+
+  connection.on("setGraphRange", (...args) => rememberMessage({ type: 1, target: "setGraphRange", arguments: args }));
+  connection.on("updateGraphFailed", (...args) => rememberMessage({ type: 1, target: "updateGraphFailed", arguments: args }));
+  connection.on("updateGraph", recordGraphValue);
+
+  const requestGraphData = async (items, label) => {
+    sentRequests.push(`${label}:${items.map((item) => `${item.index}/${item.data}`).join(",")}`);
+    await connection.invoke("addAllGraph", new Date().toISOString(), 14, items);
+  };
+
+  try {
+    await connection.start();
+    await requestGraphData(graphItems, "full");
+    if (!latestByLabel.has("暑さ指数")) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await requestGraphData(activeGraphItems(), "active");
+    }
+
+    await Promise.race([
+      ready,
+      new Promise((_, reject) => setTimeout(() => {
+        const labels = Array.from(observedLabels).join(", ") || "none";
+        const targets = Array.from(observedTargets).join(", ") || "none";
+        const previews = observedMessages.join(" | ") || "none";
+        const requests = sentRequests.join(" | ") || "none";
+        reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}; sent=${requests}; previews=${previews}`));
+      }, 45000)),
+    ]);
+  } finally {
+    await connection.stop().catch(() => {});
+  }
 
   const wbgt = latestByLabel.get("暑さ指数");
   const humidity = latestByLabel.get("湿度");

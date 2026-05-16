@@ -27,6 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install data updater dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Update WBGT data
         run: node scripts/update-wbgt-data.mjs
         env:
@@ -36,6 +39,9 @@ jobs:
           WBGT_TARGET_URL: ${{ secrets.WBGT_TARGET_URL }}
           WBGT_DATA_URL: ${{ secrets.WBGT_DATA_URL }}
           WBGT_DATA_AUTHORIZATION: ${{ secrets.WBGT_DATA_AUTHORIZATION }}
+
+      - name: Clean data updater dependencies
+        run: rm -rf node_modules package-lock.json
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
