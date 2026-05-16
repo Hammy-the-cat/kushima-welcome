@@ -403,12 +403,16 @@ const fetchGraphHubData = async (jar) => {
     let retryRequested = false;
     let fallbackStartTimer;
     let pingTimer;
+    let retryTimer;
     const timeout = setTimeout(() => {
       try {
         socket.close();
       } catch {
         // ignore close errors
       }
+      clearTimeout(fallbackStartTimer);
+      clearTimeout(retryTimer);
+      clearInterval(pingTimer);
       const labels = Array.from(observedLabels).join(", ") || "none";
       const targets = Array.from(observedTargets).join(", ") || "none";
       const previews = observedMessages.join(" | ") || "none";
@@ -436,6 +440,7 @@ const fetchGraphHubData = async (jar) => {
       if (latestByLabel.has("暑さ指数")) {
         clearTimeout(timeout);
         clearTimeout(fallbackStartTimer);
+        clearTimeout(retryTimer);
         clearInterval(pingTimer);
         try {
           socket.close();
@@ -472,7 +477,7 @@ const fetchGraphHubData = async (jar) => {
         }
         if (!retryRequested && message.type === 3 && message.invocationId === "0" && !latestByLabel.has("暑さ指数")) {
           retryRequested = true;
-          setTimeout(() => requestGraphData(activeGraphItems(), "1"), 1000);
+          retryTimer = setTimeout(() => requestGraphData(activeGraphItems(), "1"), 1000);
         }
       }
       finishIfReady();
@@ -480,6 +485,8 @@ const fetchGraphHubData = async (jar) => {
 
     socket.onError((error) => {
       clearTimeout(timeout);
+      clearTimeout(fallbackStartTimer);
+      clearTimeout(retryTimer);
       clearInterval(pingTimer);
       reject(error instanceof Error ? error : new Error("GraphHub websocket error."));
     });
