@@ -30,6 +30,9 @@ jobs:
       - name: Install data updater dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Install browser for WBGT capture
+        run: npx playwright install --with-deps chromium
+
       - name: Update WBGT data
         run: node scripts/update-wbgt-data.mjs
         env:

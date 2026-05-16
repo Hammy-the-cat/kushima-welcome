@@ -145,6 +145,25 @@ const activeGraphItems = () => [
   { index: 5, location: "13", data: "0-1071-15", objId: "graph_13_1071_15" },
 ];
 
+const dataFromGraphs = (latestByLabel, message) => {
+  const wbgt = latestByLabel.get("暑さ指数");
+  const humidity = latestByLabel.get("湿度");
+  const temperature = latestByLabel.get("気温") ?? latestByLabel.get("温度");
+  if (!wbgt) {
+    throw new Error(message);
+  }
+
+  return {
+    status: "ok",
+    value: wbgt.value,
+    level: classifyWbgt(wbgt.value),
+    temperature: temperature ? `${temperature.value}${temperature.unit || "℃"}` : demoData.temperature,
+    humidity: humidity ? `${humidity.value}${humidity.unit || "%"}` : demoData.humidity,
+    sourceUpdatedAt: wbgt.sourceUpdatedAt,
+    message: "GraphHubからWBGTデータを更新しました。",
+  };
+};
+
 const signalRFrame = (payload) => `${JSON.stringify(payload)}\x1e`;
 
 const parseSignalRFrames = (raw) =>
@@ -462,22 +481,70 @@ const fetchGraphHubData = async (jar) => {
     await connection.stop().catch(() => {});
   }
 
-  const wbgt = latestByLabel.get("暑さ指数");
-  const humidity = latestByLabel.get("湿度");
-  const temperature = latestByLabel.get("気温") ?? latestByLabel.get("温度");
-  if (!wbgt) {
-    throw new Error("GraphHub did not return WBGT data.");
+  return dataFromGraphs(latestByLabel, "GraphHub did not return WBGT data.");
+};
+
+const fetchBrowserGraphHubData = async () => {
+  const { chromium } = await import("playwright");
+  const latestByLabel = new Map();
+  const observedTargets = new Set();
+  const observedLabels = new Set();
+  const observedMessages = [];
+  let frameCount = 0;
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({
+    locale: "ja-JP",
+    userAgent: BROWSER_USER_AGENT,
+  });
+
+  const rememberMessage = (message) => {
+    frameCount += 1;
+    if (message.target) {
+      observedTargets.add(message.target);
+    }
+    if (observedMessages.length < 10) {
+      observedMessages.push(summarizeGraphHubMessage(message));
+    }
+    const latest = getLatestGraphValue(message);
+    if (latest) {
+      observedLabels.add(latest.label);
+      latestByLabel.set(latest.label, latest);
+    }
+  };
+
+  try {
+    page.on("websocket", (webSocket) => {
+      webSocket.on("framereceived", ({ payload }) => {
+        for (const message of parseSignalRFrames(payload)) {
+          rememberMessage(message);
+        }
+      });
+    });
+
+    await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await Promise.race([
+      new Promise((resolve) => setTimeout(resolve, 45000)),
+      new Promise((resolve) => {
+        const timer = setInterval(() => {
+          if (latestByLabel.has("暑さ指数")) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 500);
+      }),
+    ]);
+  } finally {
+    await browser.close().catch(() => {});
   }
 
-  return {
-    status: "ok",
-    value: wbgt.value,
-    level: classifyWbgt(wbgt.value),
-    temperature: temperature ? `${temperature.value}${temperature.unit || "℃"}` : demoData.temperature,
-    humidity: humidity ? `${humidity.value}${humidity.unit || "%"}` : demoData.humidity,
-    sourceUpdatedAt: wbgt.sourceUpdatedAt,
-    message: "GraphHubからWBGTデータを更新しました。",
-  };
+  const labels = Array.from(observedLabels).join(", ") || "none";
+  const targets = Array.from(observedTargets).join(", ") || "none";
+  const previews = observedMessages.join(" | ") || "none";
+  return dataFromGraphs(
+    latestByLabel,
+    `Browser GraphHub capture did not return WBGT data. frames=${frameCount}; targets=${targets}; labels=${labels}; previews=${previews}`,
+  );
 };
 
 const findNear = (text, labels) => {
@@ -601,9 +668,16 @@ const loginAndFetchHtml = async () => {
 
   let graphHubError;
   try {
-    return await fetchGraphHubData(jar);
+    return await fetchBrowserGraphHubData();
   } catch (error) {
     graphHubError = new Error(`${error instanceof Error ? error.message : error}; ${loginStatus}`);
+    console.warn(error instanceof Error ? error.message : error);
+  }
+
+  try {
+    return await fetchGraphHubData(jar);
+  } catch (error) {
+    graphHubError = new Error(`${graphHubError.message}; direct GraphHub failed: ${error instanceof Error ? error.message : error}`);
     console.warn(error instanceof Error ? error.message : error);
   }
 
