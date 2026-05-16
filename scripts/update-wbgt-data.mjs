@@ -76,6 +76,188 @@ const classifyWbgt = (value) => {
   return "ほぼ安全";
 };
 
+const formatDateTimeJst = (date) => {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+};
+
+const buildGraphItems = () => {
+  const location = envValue("WBGT_GRAPH_LOCATION") ?? "13";
+  const groups = (envValue("WBGT_GRAPH_GROUPS") ?? "1070,1071")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const sensors = (envValue("WBGT_GRAPH_SENSORS") ?? "17,14,15")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  let index = 0;
+  return groups.flatMap((group) =>
+    sensors.map((sensor) => {
+      const data = `0-${group}-${sensor}`;
+      return {
+        index: index++,
+        location,
+        data,
+        objId: `graph_${location}_${group}_${sensor}`,
+      };
+    }),
+  );
+};
+
+const signalRFrame = (payload) => `${JSON.stringify(payload)}\x1e`;
+
+const parseSignalRFrames = (raw) =>
+  `${raw}`
+    .split("\x1e")
+    .map((frame) => frame.trim())
+    .filter(Boolean)
+    .map((frame) => {
+      try {
+        return JSON.parse(frame);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+const getLatestGraphValue = (message) => {
+  if (message?.target !== "updateGraph" || !Array.isArray(message.arguments)) {
+    return null;
+  }
+  const [, label, unit, , timestamps, values] = message.arguments;
+  if (!Array.isArray(timestamps) || !Array.isArray(values) || values.length === 0) {
+    return null;
+  }
+  const latestValue = values[values.length - 1];
+  const latestTime = timestamps[timestamps.length - 1];
+  const numeric = Number(latestValue);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return {
+    label: `${label}`,
+    unit: `${unit ?? ""}`,
+    value: numeric,
+    sourceUpdatedAt: `${latestTime ?? ""}`,
+  };
+};
+
+const fetchGraphHubData = async (jar) => {
+  if (typeof WebSocket === "undefined") {
+    throw new Error("WebSocket is not available in this Node.js runtime.");
+  }
+
+  const negotiateUrl = new URL("GraphHub/negotiate?negotiateVersion=1", BASE_URL).toString();
+  const negotiateResponse = await fetch(negotiateUrl, {
+    method: "POST",
+    headers: {
+      Cookie: cookieHeader(jar),
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+  if (!negotiateResponse.ok) {
+    throw new Error(`GraphHub negotiate failed: ${negotiateResponse.status}`);
+  }
+  mergeCookies(jar, negotiateResponse.headers);
+  const negotiate = await negotiateResponse.json();
+  const connectionId = negotiate.connectionToken ?? negotiate.connectionId;
+  if (!connectionId) {
+    throw new Error("GraphHub negotiate response did not include connection id.");
+  }
+
+  const websocketUrl = new URL("GraphHub", BASE_URL);
+  websocketUrl.protocol = websocketUrl.protocol === "https:" ? "wss:" : "ws:";
+  websocketUrl.searchParams.set("id", connectionId);
+
+  const graphItems = buildGraphItems();
+  const latestByLabel = new Map();
+  const end = new Date();
+  const start = new Date(end.getTime() - 1000 * 60 * 60 * 24 * 2);
+
+  await new Promise((resolve, reject) => {
+    const socket = new WebSocket(websocketUrl.toString());
+    const timeout = setTimeout(() => {
+      try {
+        socket.close();
+      } catch {
+        // ignore close errors
+      }
+      reject(new Error("GraphHub timed out before receiving WBGT data."));
+    }, 20000);
+
+    const finishIfReady = () => {
+      if (latestByLabel.has("暑さ指数") && latestByLabel.has("湿度") && (latestByLabel.has("気温") || latestByLabel.has("温度"))) {
+        clearTimeout(timeout);
+        try {
+          socket.close();
+        } catch {
+          // ignore close errors
+        }
+        resolve();
+      }
+    };
+
+    socket.addEventListener("open", () => {
+      socket.send(signalRFrame({ protocol: "json", version: 1 }));
+      socket.send(signalRFrame({
+        type: 1,
+        invocationId: "0",
+        target: "addAllGraph",
+        arguments: [new Date().toISOString(), 14, graphItems],
+      }));
+      socket.send(signalRFrame({
+        type: 1,
+        target: "setGraphRange",
+        arguments: [formatDateTimeJst(start), formatDateTimeJst(end)],
+      }));
+    });
+
+    socket.addEventListener("message", (event) => {
+      for (const message of parseSignalRFrames(event.data)) {
+        const latest = getLatestGraphValue(message);
+        if (latest) {
+          latestByLabel.set(latest.label, latest);
+        }
+      }
+      finishIfReady();
+    });
+
+    socket.addEventListener("error", () => {
+      clearTimeout(timeout);
+      reject(new Error("GraphHub websocket error."));
+    });
+  });
+
+  const wbgt = latestByLabel.get("暑さ指数");
+  const humidity = latestByLabel.get("湿度");
+  const temperature = latestByLabel.get("気温") ?? latestByLabel.get("温度");
+  if (!wbgt) {
+    throw new Error("GraphHub did not return WBGT data.");
+  }
+
+  return {
+    status: "ok",
+    value: wbgt.value,
+    level: classifyWbgt(wbgt.value),
+    temperature: temperature ? `${temperature.value}${temperature.unit || "℃"}` : demoData.temperature,
+    humidity: humidity ? `${humidity.value}${humidity.unit || "%"}` : demoData.humidity,
+    sourceUpdatedAt: wbgt.sourceUpdatedAt,
+    message: "GraphHubからWBGTデータを更新しました。",
+  };
+};
+
 const findNear = (text, labels) => {
   for (const label of labels) {
     const index = text.indexOf(label);
@@ -174,6 +356,12 @@ const loginAndFetchHtml = async () => {
     body: form,
   });
   mergeCookies(jar, loginResponse.headers);
+
+  try {
+    return await fetchGraphHubData(jar);
+  } catch (error) {
+    console.warn(error instanceof Error ? error.message : error);
+  }
 
   const redirectedUrl = loginResponse.headers.get("location")
     ? new URL(loginResponse.headers.get("location"), BASE_URL).toString()
