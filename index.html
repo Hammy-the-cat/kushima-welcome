@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>串間市立串間中学校 ウェルカムボード</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,.2)),
+        linear-gradient(135deg, #e9f6f2 0%, #fff7e1 58%, #f7fbff 100%);
+      color: #14251f;
+      font-family: "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(165deg, transparent 0 58%, rgba(11,122,107,.12) 58% 100%),
+        radial-gradient(circle at 18% 18%, rgba(11,122,107,.12), transparent 34%),
+        radial-gradient(circle at 86% 18%, rgba(242,174,53,.18), transparent 28%);
+      pointer-events: none;
+    }
+    .sun {
+      position: fixed;
+      right: 5vw;
+      top: 10vh;
+      width: min(18vw, 220px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ffe8a6 0 38%, rgba(242,174,53,.18) 39% 100%);
+    }
+    .fortuneTicker {
+      position: relative;
+      z-index: 2;
+      height: 52px;
+      overflow: hidden;
+      border-bottom: 1px solid rgba(20,37,31,.12);
+      background: rgba(18,36,31,.94);
+      color: #fff;
+    }
+    .fortuneCard {
+      display: flex;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(16px, 2.4vw, 34px);
+      padding: 0 clamp(18px, 4vw, 56px);
+      white-space: nowrap;
+      animation: fortuneFade .5s ease both;
+    }
+    .fortuneCard span,
+    .fortuneCard b,
+    .fortuneCard em,
+    .fortuneCard i {
+      font-size: clamp(18px, 1.35vw, 25px);
+      color: #fff;
+      font-weight: 800;
+      line-height: 1;
+      font-style: normal;
+    }
+    .fortuneCard strong {
+      color: #f7d77e;
+      font-size: clamp(18px, 1.35vw, 25px);
+      font-weight: 900;
+    }
+    .fortuneCard b {
+      color: #ffefaa;
+      letter-spacing: .04em;
+    }
+    .fortuneCard i {
+      color: #cfe6df;
+    }
+    @keyframes fortuneFade {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hero {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(410px, .92fr);
+      gap: clamp(28px, 4vw, 64px);
+      align-items: stretch;
+      min-height: calc(78vh - 52px);
+      padding: clamp(36px, 5vw, 72px) clamp(32px, 6vw, 92px) 24px;
+    }
+    .welcome {
+      display: flex;
+      min-height: 560px;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .kicker {
+      margin: 0 0 20px;
+      color: #0b7a6b;
+      font-size: clamp(18px, 1.5vw, 24px);
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      color: #10211b;
+      font-size: clamp(82px, 9vw, 148px);
+      font-weight: 900;
+      letter-spacing: 0;
+      line-height: .96;
+    }
+    h1 span {
+      display: block;
+      margin-top: 22px;
+      font-size: clamp(38px, 4vw, 70px);
+      line-height: 1.16;
+    }
+    .message {
+      max-width: 780px;
+      margin: 34px 0 0;
+      color: #40554e;
+      font-size: clamp(22px, 2vw, 32px);
+      font-weight: 600;
+      line-height: 1.8;
+    }
+    .metaRow {
+      display: grid;
+      grid-template-columns: minmax(0, 460px);
+      gap: 14px;
+      max-width: 780px;
+      margin-top: 40px;
+    }
+    .metaRow div {
+      min-height: 104px;
+      border: 1px solid rgba(20,37,31,.12);
+      border-radius: 8px;
+      padding: 18px 22px;
+      background: rgba(255,255,255,.76);
+      box-shadow: 0 18px 54px rgba(20,37,31,.08);
+    }
+    .metaRow span {
+      display: block;
+      color: #61736e;
+      font-size: clamp(16px, 1.25vw, 20px);
+      font-weight: 800;
+    }
+    .metaRow strong {
+      display: block;
+      margin-top: 6px;
+      color: #10211b;
+      font-size: clamp(30px, 3vw, 50px);
+      font-weight: 900;
+      line-height: 1.05;
+    }
+    .wbgtPanel {
+      align-self: center;
+      border: 1px solid rgba(20,37,31,.12);
+      border-radius: 8px;
+      padding: clamp(26px, 3.2vw, 42px);
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 26px 80px rgba(20,37,31,.14);
+    }
+    .panelHeader {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 20px;
+    }
+    .panelHeader span {
+      color: #0b7a6b;
+      font-size: clamp(20px, 1.8vw, 30px);
+      font-weight: 900;
+    }
+    .panelHeader strong {
+      color: #52645f;
+      font-size: clamp(16px, 1.25vw, 22px);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .valueBlock {
+      margin-top: 28px;
+      border-radius: 8px;
+      padding: 28px;
+      background: linear-gradient(135deg, #fff2e8, #fff8e7);
+    }
+    .valueBlock p {
+      margin: 0 0 10px;
+      color: #a63d1f;
+      font-size: clamp(28px, 2.8vw, 48px);
+      font-weight: 900;
+    }
+    .valueBlock div {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .valueBlock strong {
+      color: #d94f2b;
+      font-size: clamp(120px, 11vw, 190px);
+      font-weight: 900;
+      line-height: .82;
+    }
+    .valueBlock span {
+      color: #d94f2b;
+      font-size: clamp(42px, 4vw, 68px);
+      font-weight: 900;
+    }
+    .gauge {
+      position: relative;
+      height: 26px;
+      margin-top: 28px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2a9d6f 0 36%, #e1b743 36% 62%, #e2782f 62% 82%, #c33a2c 82% 100%);
+    }
+    .gauge span {
+      display: block;
+      width: 72%;
+      height: 100%;
+      border-right: 6px solid #10211b;
+    }
+    .measurements {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin: 28px 0 0;
+    }
+    .measurements div {
+      min-height: 98px;
+      border-radius: 8px;
+      padding: 16px;
+      background: #eef5f2;
+    }
+    .measurements dt {
+      margin: 0;
+      color: #61736e;
+      font-size: clamp(14px, 1.1vw, 18px);
+      font-weight: 800;
+    }
+    .measurements dd {
+      margin: 8px 0 0;
+      color: #10211b;
+      font-size: clamp(24px, 2.2vw, 38px);
+      font-weight: 900;
+    }
+    .notice {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 22px;
+      border-top: 1px solid rgba(20,37,31,.12);
+      padding-top: 20px;
+    }
+    .notice span {
+      color: #61736e;
+      font-size: clamp(16px, 1.25vw, 20px);
+      font-weight: 800;
+    }
+    .notice strong {
+      color: #10211b;
+      font-size: clamp(28px, 2.6vw, 44px);
+      font-weight: 900;
+    }
+    .footerBand {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 30px;
+      align-items: center;
+      margin: 0 clamp(32px, 6vw, 92px) clamp(30px, 4vw, 54px);
+      border-radius: 8px;
+      padding: 24px clamp(28px, 3vw, 42px);
+      background: #12241f;
+      color: #fff;
+    }
+    .footerBand h2 {
+      margin: 0;
+      font-size: clamp(24px, 2.2vw, 38px);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .footerBand ul {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .footerBand li {
+      min-height: 52px;
+      border-radius: 8px;
+      padding: 12px 16px;
+      background: rgba(255,255,255,.1);
+      color: rgba(255,255,255,.94);
+      font-size: clamp(18px, 1.45vw, 25px);
+      font-weight: 800;
+      text-align: center;
+    }
+    @media (max-width: 1120px) {
+      body { overflow: auto; }
+      .hero, .footerBand { grid-template-columns: 1fr; }
+      .welcome { min-height: auto; }
+      .measurements, .footerBand ul { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sun"></div>
+  <header class="fortuneTicker" aria-label="今日の星座占い">
+    <div class="fortuneCard" id="fortuneItems">
+      <strong>今日の星座占い</strong>
+      <span>読み込み中...</span>
+    </div>
+  </header>
+  <section class="hero">
+    <div class="welcome">
+      <p class="kicker">Kushima Junior High School</p>
+      <h1>ようこそ<span>串間市立串間中学校へ</span></h1>
+      <p class="message">本日はご来校いただきありがとうございます。校内では安全に配慮し、熱中症予防のため暑さ指数を確認しています。</p>
+      <div class="metaRow">
+        <div><span id="dateLabel">2026年5月16日 土曜日</span><strong id="timeLabel">10:30</strong></div>
+      </div>
+    </div>
+
+    <aside class="wbgtPanel">
+      <div class="panelHeader"><span>暑さ指数 WBGT</span></div>
+      <div class="valueBlock"><p>厳重警戒</p><div><strong>29.4</strong><span>℃</span></div></div>
+      <div class="gauge"><span></span></div>
+      <dl class="measurements">
+        <div><dt>気温</dt><dd>31.8℃</dd></div>
+        <div><dt>湿度</dt><dd>66%</dd></div>
+      </dl>
+      <div class="notice"><span>更新</span><strong>10:30</strong></div>
+    </aside>
+  </section>
+
+  <section class="footerBand">
+    <h2>熱中症予防のお願い</h2>
+    <ul>
+      <li>こまめな水分補給</li>
+      <li>屋外活動は短時間で調整</li>
+      <li>体調不良時は職員室へ</li>
+    </ul>
+  </section>
+
+  <script>
+    const dateLabel = document.getElementById("dateLabel");
+    const timeLabel = document.getElementById("timeLabel");
+    const dateFormatter = new Intl.DateTimeFormat("ja-JP", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+    });
+    const timeFormatter = new Intl.DateTimeFormat("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    function updateClock() {
+      const now = new Date();
+      dateLabel.textContent = dateFormatter.format(now);
+      timeLabel.textContent = timeFormatter.format(now);
+    }
+    updateClock();
+    setInterval(updateClock, 20000);
+
+    const fallbackHoroscope = {
+      title: "今日の星座占い",
+      signs: [
+        { name: "牡羊座", short: "おひつじ座" },
+        { name: "牡牛座", short: "おうし座" },
+        { name: "双子座", short: "ふたご座" },
+        { name: "蟹座", short: "かに座" },
+        { name: "獅子座", short: "しし座" },
+        { name: "乙女座", short: "おとめ座" },
+        { name: "天秤座", short: "てんびん座" },
+        { name: "蠍座", short: "さそり座" },
+        { name: "射手座", short: "いて座" },
+        { name: "山羊座", short: "やぎ座" },
+        { name: "水瓶座", short: "みずがめ座" },
+        { name: "魚座", short: "うお座" }
+      ],
+      subjects: ["国語", "社会", "数学", "理科", "英語", "音楽", "保体", "美術", "技術", "家庭", "道徳", "学活", "総合"],
+      fortunes: [
+        { score: "★★★★★", message: "笑顔であいさつすると良い流れが生まれます" },
+        { score: "★★★★☆", message: "落ち着いて行動すると実力を発揮できます" },
+        { score: "★★★★☆", message: "小さな親切が一日を明るくしてくれます" }
+      ]
+    };
+
+    function getTokyoDateKey() {
+      const parts = new Intl.DateTimeFormat("ja-JP", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).formatToParts(new Date());
+      const year = parts.find((part) => part.type === "year")?.value || "2026";
+      const month = parts.find((part) => part.type === "month")?.value || "01";
+      const day = parts.find((part) => part.type === "day")?.value || "01";
+      return `${year}-${month}-${day}`;
+    }
+
+    function hashText(text) {
+      return Array.from(text).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 2166136261);
+    }
+
+    let horoscopeItems = [];
+    let horoscopeIndex = 0;
+
+    function showHoroscopeItem(data) {
+      const fortuneItems = document.getElementById("fortuneItems");
+      const item = horoscopeItems[horoscopeIndex % horoscopeItems.length];
+      fortuneItems.style.animation = "none";
+      void fortuneItems.offsetWidth;
+      fortuneItems.style.animation = "";
+      fortuneItems.innerHTML = `
+        <strong>${data.title}</strong>
+        <span>${item.sign}</span>
+        <b>${item.score}</b>
+        <em>${item.message}</em>
+        <i>ラッキー教科: ${item.luckySubject}</i>
+      `;
+    }
+
+    function renderHoroscope(data) {
+      const base = hashText(getTokyoDateKey());
+      horoscopeItems = data.signs.map((sign, index) => {
+        const fortune = data.fortunes[(base + index * 7) % data.fortunes.length];
+        return {
+          sign: sign.short,
+          score: fortune.score,
+          message: fortune.message,
+          luckySubject: data.subjects[(base + index * 5) % data.subjects.length]
+        };
+      });
+      horoscopeIndex = 0;
+      showHoroscopeItem(data);
+      setInterval(() => {
+        horoscopeIndex = (horoscopeIndex + 1) % horoscopeItems.length;
+        showHoroscopeItem(data);
+      }, 5000);
+    }
+
+    fetch("./kushima-horoscope.json", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : fallbackHoroscope)
+      .then((data) => renderHoroscope(data.signs?.length && data.fortunes?.length && data.subjects?.length ? data : fallbackHoroscope))
+      .catch(() => renderHoroscope(fallbackHoroscope));
+  </script>
+</body>
+</html>
