@@ -344,25 +344,42 @@ const fetchGraphHubData = async (jar) => {
 
   const graphItems = buildGraphItems();
   const latestByLabel = new Map();
-  const end = new Date();
-  const start = new Date(end.getTime() - 1000 * 60 * 60 * 24 * 2);
+  const observedLabels = new Set();
+  const observedTargets = new Set();
+  let messageCount = 0;
 
   await new Promise((resolve, reject) => {
     const socket = createWebSocketConnection(websocketUrl.toString(), {
       Cookie: cookieHeader(jar),
     });
+    let graphRequested = false;
+    let fallbackStartTimer;
     const timeout = setTimeout(() => {
       try {
         socket.close();
       } catch {
         // ignore close errors
       }
-        reject(new Error("GraphHub timed out before receiving WBGT data."));
+      const labels = Array.from(observedLabels).join(", ") || "none";
+      const targets = Array.from(observedTargets).join(", ") || "none";
+      reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}`));
       }, 20000);
 
+    const requestGraphData = () => {
+      if (graphRequested) return;
+      graphRequested = true;
+      socket.send(signalRFrame({
+        type: 1,
+        invocationId: "0",
+        target: "addAllGraph",
+        arguments: [new Date().toISOString(), 14, graphItems],
+      }));
+    };
+
     const finishIfReady = () => {
-      if (latestByLabel.has("暑さ指数") && latestByLabel.has("湿度")) {
+      if (latestByLabel.has("暑さ指数")) {
         clearTimeout(timeout);
+        clearTimeout(fallbackStartTimer);
         try {
           socket.close();
         } catch {
@@ -374,23 +391,22 @@ const fetchGraphHubData = async (jar) => {
 
     socket.onOpen(() => {
       socket.send(signalRFrame({ protocol: "json", version: 1 }));
-      socket.send(signalRFrame({
-        type: 1,
-        invocationId: "0",
-        target: "addAllGraph",
-        arguments: [new Date().toISOString(), 14, graphItems],
-      }));
-      socket.send(signalRFrame({
-        type: 1,
-        target: "setGraphRange",
-        arguments: [formatDateTimeJst(start), formatDateTimeJst(end)],
-      }));
+      fallbackStartTimer = setTimeout(requestGraphData, 1000);
     });
 
     socket.onMessage((data) => {
-      for (const message of parseSignalRFrames(data)) {
+      const messages = parseSignalRFrames(data);
+      messageCount += messages.length;
+      for (const message of messages) {
+        if (!graphRequested && Object.keys(message).length === 0) {
+          requestGraphData();
+        }
+        if (message.target) {
+          observedTargets.add(message.target);
+        }
         const latest = getLatestGraphValue(message);
         if (latest) {
+          observedLabels.add(latest.label);
           latestByLabel.set(latest.label, latest);
         }
       }
