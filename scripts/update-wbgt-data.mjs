@@ -130,6 +130,12 @@ const buildGraphItems = () => {
   );
 };
 
+const activeGraphItems = () => [
+  { index: 3, location: "13", data: "0-1071-17", objId: "graph_13_1071_17" },
+  { index: 4, location: "13", data: "0-1071-14", objId: "graph_13_1071_14" },
+  { index: 5, location: "13", data: "0-1071-15", objId: "graph_13_1071_15" },
+];
+
 const signalRFrame = (payload) => `${JSON.stringify(payload)}\x1e`;
 
 const parseSignalRFrames = (raw) =>
@@ -386,6 +392,7 @@ const fetchGraphHubData = async (jar) => {
   const observedLabels = new Set();
   const observedTargets = new Set();
   const observedMessages = [];
+  const sentRequests = [];
   let messageCount = 0;
 
   await new Promise((resolve, reject) => {
@@ -393,7 +400,9 @@ const fetchGraphHubData = async (jar) => {
       Cookie: cookieHeader(jar),
     });
     let graphRequested = false;
+    let retryRequested = false;
     let fallbackStartTimer;
+    let pingTimer;
     const timeout = setTimeout(() => {
       try {
         socket.close();
@@ -403,24 +412,31 @@ const fetchGraphHubData = async (jar) => {
       const labels = Array.from(observedLabels).join(", ") || "none";
       const targets = Array.from(observedTargets).join(", ") || "none";
       const previews = observedMessages.join(" | ") || "none";
-      reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}; previews=${previews}`));
+      const requests = sentRequests.join(" | ") || "none";
+      reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}; sent=${requests}; previews=${previews}`));
       }, 45000);
 
-    const requestGraphData = () => {
-      if (graphRequested) return;
-      graphRequested = true;
+    const requestGraphData = (items = graphItems, invocationId = "0") => {
+      sentRequests.push(`${invocationId}:${items.map((item) => `${item.index}/${item.data}`).join(",")}`);
       socket.send(signalRFrame({
         type: 1,
-        invocationId: "0",
+        invocationId,
         target: "addAllGraph",
-        arguments: [new Date().toISOString(), 14, graphItems],
+        arguments: [new Date().toISOString(), 14, items],
       }));
+    };
+
+    const requestInitialGraphData = () => {
+      if (graphRequested) return;
+      graphRequested = true;
+      requestGraphData(graphItems, "0");
     };
 
     const finishIfReady = () => {
       if (latestByLabel.has("暑さ指数")) {
         clearTimeout(timeout);
         clearTimeout(fallbackStartTimer);
+        clearInterval(pingTimer);
         try {
           socket.close();
         } catch {
@@ -432,7 +448,8 @@ const fetchGraphHubData = async (jar) => {
 
     socket.onOpen(() => {
       socket.send(signalRFrame({ protocol: "json", version: 1 }));
-      fallbackStartTimer = setTimeout(requestGraphData, 1000);
+      pingTimer = setInterval(() => socket.send(signalRFrame({ type: 6 })), 15000);
+      fallbackStartTimer = setTimeout(requestInitialGraphData, 1000);
     });
 
     socket.onMessage((data) => {
@@ -440,7 +457,7 @@ const fetchGraphHubData = async (jar) => {
       messageCount += messages.length;
       for (const message of messages) {
         if (!graphRequested && Object.keys(message).length === 0) {
-          requestGraphData();
+          requestInitialGraphData();
         }
         if (message.target) {
           observedTargets.add(message.target);
@@ -453,12 +470,17 @@ const fetchGraphHubData = async (jar) => {
           observedLabels.add(latest.label);
           latestByLabel.set(latest.label, latest);
         }
+        if (!retryRequested && message.type === 3 && message.invocationId === "0" && !latestByLabel.has("暑さ指数")) {
+          retryRequested = true;
+          setTimeout(() => requestGraphData(activeGraphItems(), "1"), 1000);
+        }
       }
       finishIfReady();
     });
 
     socket.onError((error) => {
       clearTimeout(timeout);
+      clearInterval(pingTimer);
       reject(error instanceof Error ? error : new Error("GraphHub websocket error."));
     });
   });
