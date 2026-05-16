@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Update WBGT data
+        run: node scripts/update-wbgt-data.mjs
+        env:
+          WBGT_LOGIN_ID: ${{ secrets.WBGT_LOGIN_ID }}
+          WBGT_PASSWORD: ${{ secrets.WBGT_PASSWORD }}
+          WBGT_BASE_URL: https://takanabe.aimnextiot.com/wbgtmonitoring/
+          WBGT_TARGET_URL: ${{ secrets.WBGT_TARGET_URL }}
+          WBGT_DATA_URL: ${{ secrets.WBGT_DATA_URL }}
+          WBGT_DATA_AUTHORIZATION: ${{ secrets.WBGT_DATA_AUTHORIZATION }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

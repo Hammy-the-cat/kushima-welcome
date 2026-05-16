@@ -264,6 +264,13 @@
       font-size: clamp(28px, 2.6vw, 44px);
       font-weight: 900;
     }
+    .dataStatus {
+      margin-top: 14px;
+      color: #61736e;
+      font-size: clamp(13px, 1vw, 16px);
+      font-weight: 700;
+      text-align: right;
+    }
     .footerBand {
       position: relative;
       z-index: 1;
@@ -329,13 +336,14 @@
 
     <aside class="wbgtPanel">
       <div class="panelHeader"><span>暑さ指数 WBGT</span></div>
-      <div class="valueBlock"><p>厳重警戒</p><div><strong>29.4</strong><span>℃</span></div></div>
-      <div class="gauge"><span></span></div>
+      <div class="valueBlock"><p id="wbgtLevel">厳重警戒</p><div><strong id="wbgtValue">29.4</strong><span>℃</span></div></div>
+      <div class="gauge"><span id="wbgtGauge"></span></div>
       <dl class="measurements">
-        <div><dt>気温</dt><dd>31.8℃</dd></div>
-        <div><dt>湿度</dt><dd>66%</dd></div>
+        <div><dt>気温</dt><dd id="temperatureValue">31.8℃</dd></div>
+        <div><dt>湿度</dt><dd id="humidityValue">66%</dd></div>
       </dl>
-      <div class="notice"><span>更新</span><strong>10:30</strong></div>
+      <div class="notice"><span>更新</span><strong id="sourceUpdatedAt">10:30</strong></div>
+      <p class="dataStatus" id="wbgtStatus">デモ値を表示中</p>
     </aside>
   </section>
 
@@ -368,6 +376,58 @@
     }
     updateClock();
     setInterval(updateClock, 20000);
+
+    const wbgtValue = document.getElementById("wbgtValue");
+    const wbgtLevel = document.getElementById("wbgtLevel");
+    const wbgtGauge = document.getElementById("wbgtGauge");
+    const temperatureValue = document.getElementById("temperatureValue");
+    const humidityValue = document.getElementById("humidityValue");
+    const sourceUpdatedAt = document.getElementById("sourceUpdatedAt");
+    const wbgtStatus = document.getElementById("wbgtStatus");
+
+    function normalizeWbgtValue(value) {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function formatMaybeUnit(value, unit) {
+      if (value == null || value === "") return "";
+      const text = `${value}`;
+      return text.includes(unit) ? text : `${text}${unit}`;
+    }
+
+    function applyWbgtData(data) {
+      const value = normalizeWbgtValue(data.value);
+      if (value != null) {
+        wbgtValue.textContent = value.toFixed(1);
+        wbgtGauge.style.width = `${Math.max(0, Math.min(100, (value / 35) * 100))}%`;
+      }
+      wbgtLevel.textContent = data.level || wbgtLevel.textContent;
+      temperatureValue.textContent = formatMaybeUnit(data.temperature, "℃") || temperatureValue.textContent;
+      humidityValue.textContent = formatMaybeUnit(data.humidity, "%") || humidityValue.textContent;
+      sourceUpdatedAt.textContent = data.sourceUpdatedAt || data.updatedAt?.slice(11, 16) || sourceUpdatedAt.textContent;
+
+      if (data.status === "ok") {
+        wbgtStatus.textContent = "WBGTサイトから自動更新中";
+      } else if (data.status === "missing_credentials") {
+        wbgtStatus.textContent = "ログイン情報未設定のためデモ値を表示中";
+      } else if (data.status) {
+        wbgtStatus.textContent = `データ更新状態: ${data.status}`;
+      }
+    }
+
+    async function updateWbgtData() {
+      try {
+        const response = await fetch(`./wbgt-live.json?ts=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) return;
+        applyWbgtData(await response.json());
+      } catch {
+        wbgtStatus.textContent = "WBGTデータを取得できませんでした";
+      }
+    }
+
+    updateWbgtData();
+    setInterval(updateWbgtData, 1000 * 60 * 5);
 
     const fallbackHoroscope = {
       title: "今日の星座占い",

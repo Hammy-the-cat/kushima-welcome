@@ -1,0 +1,10 @@
+{
+  "status": "demo",
+  "value": 29.4,
+  "level": "厳重警戒",
+  "temperature": "31.8℃",
+  "humidity": "66%",
+  "sourceUpdatedAt": "10:30",
+  "updatedAt": null,
+  "message": "デモ値を表示しています。GitHub SecretsにWBGT_LOGIN_IDとWBGT_PASSWORDを設定すると自動更新できます。"
+}
