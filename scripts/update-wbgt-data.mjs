@@ -583,13 +583,23 @@ const loginAndFetchHtml = async () => {
   }
 
   const jar = new Map();
-  const loginPageResponse = await fetch(BASE_URL, { redirect: "manual" });
+  const firstResponse = await fetch(BASE_URL, { redirect: "manual" });
+  mergeCookies(jar, firstResponse.headers);
+  const loginPageUrl = firstResponse.headers.get("location")
+    ? new URL(firstResponse.headers.get("location"), BASE_URL).toString()
+    : new URL("/Account/Login?ReturnUrl=%2Fwbgtmonitoring%2F", BASE_URL).toString();
+  const loginPageResponse = await fetch(loginPageUrl, {
+    redirect: "manual",
+    headers: {
+      Cookie: cookieHeader(jar),
+    },
+  });
   mergeCookies(jar, loginPageResponse.headers);
   const loginHtml = await loginPageResponse.text();
   const tokenMatch = loginHtml.match(/name="__RequestVerificationToken"\s+type="hidden"\s+value="([^"]+)"/i)
     ?? loginHtml.match(/type="hidden"\s+value="([^"]+)"\s+name="__RequestVerificationToken"/i);
 
-  const loginUrl = new URL("Account/Login?ReturnUrl=%2Fwbgtmonitoring%2F", BASE_URL).toString();
+  const loginUrl = loginPageUrl;
   const form = new URLSearchParams();
   form.set("Input.LoginId", LOGIN_ID);
   form.set("Input.Password", PASSWORD);
@@ -608,6 +618,10 @@ const loginAndFetchHtml = async () => {
     body: form,
   });
   mergeCookies(jar, loginResponse.headers);
+
+  if (loginResponse.status >= 400) {
+    throw new Error(`WBGT login request failed: ${loginResponse.status} ${loginUrl}`);
+  }
 
   let graphHubError;
   try {
