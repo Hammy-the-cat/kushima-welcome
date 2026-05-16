@@ -98,6 +98,9 @@ const buildGraphItems = () => {
   const location = envValue("WBGT_GRAPH_LOCATION") ?? "13";
   if (!envValue("WBGT_GRAPH_GROUPS") && !envValue("WBGT_GRAPH_SENSORS") && location === "13") {
     return [
+      { index: 0, location: "13", data: "0-1070-17", objId: "graph_13_1070_17" },
+      { index: 1, location: "13", data: "0-1070-14", objId: "graph_13_1070_14" },
+      { index: 2, location: "13", data: "0-1070-15", objId: "graph_13_1070_15" },
       { index: 3, location: "13", data: "0-1071-17", objId: "graph_13_1071_17" },
       { index: 4, location: "13", data: "0-1071-14", objId: "graph_13_1071_14" },
       { index: 5, location: "13", data: "0-1071-15", objId: "graph_13_1071_15" },
@@ -401,7 +404,7 @@ const fetchGraphHubData = async (jar) => {
       const targets = Array.from(observedTargets).join(", ") || "none";
       const previews = observedMessages.join(" | ") || "none";
       reject(new Error(`GraphHub timed out before receiving WBGT data. messages=${messageCount}; targets=${targets}; labels=${labels}; previews=${previews}`));
-      }, 20000);
+      }, 45000);
 
     const requestGraphData = () => {
       if (graphRequested) return;
