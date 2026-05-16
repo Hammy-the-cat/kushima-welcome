@@ -175,16 +175,38 @@ const loginAndFetchHtml = async () => {
   });
   mergeCookies(jar, loginResponse.headers);
 
-  const targetUrl = envValue("WBGT_TARGET_URL") ?? BASE_URL;
-  const pageResponse = await fetch(targetUrl, {
-    headers: {
-      Cookie: cookieHeader(jar),
-    },
-  });
-  if (!pageResponse.ok) {
-    throw new Error(`WBGT page request failed: ${pageResponse.status}`);
+  const redirectedUrl = loginResponse.headers.get("location")
+    ? new URL(loginResponse.headers.get("location"), BASE_URL).toString()
+    : undefined;
+  const candidates = [
+    envValue("WBGT_TARGET_URL"),
+    redirectedUrl,
+    BASE_URL,
+    new URL("./", BASE_URL).toString(),
+  ].filter(Boolean);
+
+  let html = "";
+  let lastStatus = "";
+  for (const targetUrl of [...new Set(candidates)]) {
+    const pageResponse = await fetch(targetUrl, {
+      headers: {
+        Cookie: cookieHeader(jar),
+      },
+    });
+    lastStatus = `${pageResponse.status} ${targetUrl}`;
+    if (!pageResponse.ok) {
+      continue;
+    }
+    html = await pageResponse.text();
+    if (!/404|Not Found/i.test(stripTags(html))) {
+      break;
+    }
   }
-  const html = await pageResponse.text();
+
+  if (!html) {
+    throw new Error(`WBGT page request failed: ${lastStatus}`);
+  }
+
   if (/Account\/Login|ログイン|LoginId|Password/i.test(html)) {
     return {
       ...demoData,
