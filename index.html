@@ -342,7 +342,7 @@
         <div><dt>気温</dt><dd id="temperatureValue">31.8℃</dd></div>
         <div><dt>湿度</dt><dd id="humidityValue">66%</dd></div>
       </dl>
-      <div class="notice"><span>更新</span><strong id="sourceUpdatedAt">10:30</strong></div>
+      <div class="notice"><span>最終更新</span><strong id="sourceUpdatedAt">10:30</strong></div>
       <p class="dataStatus" id="wbgtStatus">デモ値を表示中</p>
     </aside>
   </section>
@@ -368,6 +368,12 @@
     const timeFormatter = new Intl.DateTimeFormat("ja-JP", {
       hour: "2-digit",
       minute: "2-digit",
+    });
+    const wbgtUpdatedAtFormatter = new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     });
     function updateClock() {
       const now = new Date();
@@ -396,6 +402,19 @@
       return text.includes(unit) ? text : `${text}${unit}`;
     }
 
+    function formatWbgtUpdatedAt(data) {
+      const rawValue = data.updatedAt || data.sourceUpdatedAt;
+      if (!rawValue) return "";
+
+      const date = new Date(rawValue);
+      if (!Number.isNaN(date.getTime())) {
+        return wbgtUpdatedAtFormatter.format(date);
+      }
+
+      const timeMatch = `${rawValue}`.match(/(\d{1,2}):(\d{2})/);
+      return timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : "";
+    }
+
     function applyWbgtData(data) {
       const value = normalizeWbgtValue(data.value);
       if (value != null) {
@@ -405,7 +424,7 @@
       wbgtLevel.textContent = data.level || wbgtLevel.textContent;
       temperatureValue.textContent = formatMaybeUnit(data.temperature, "℃") || temperatureValue.textContent;
       humidityValue.textContent = formatMaybeUnit(data.humidity, "%") || humidityValue.textContent;
-      sourceUpdatedAt.textContent = data.sourceUpdatedAt || data.updatedAt?.slice(11, 16) || sourceUpdatedAt.textContent;
+      sourceUpdatedAt.textContent = formatWbgtUpdatedAt(data) || sourceUpdatedAt.textContent;
 
       if (data.status === "ok") {
         wbgtStatus.textContent = "WBGTサイトから自動更新中";
