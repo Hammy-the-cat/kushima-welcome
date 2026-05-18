@@ -494,6 +494,7 @@ const fetchBrowserGraphHubData = async () => {
   let pageStatus = "not loaded";
   let pageTitle = "";
   let pageUrl = BASE_URL;
+  let loginAttempt = "not needed";
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
@@ -529,6 +530,25 @@ const fetchBrowserGraphHubData = async () => {
     pageStatus = response ? `${response.status()} ${response.url()}` : "no response";
     pageTitle = await page.title().catch(() => "");
     pageUrl = page.url();
+
+    const loginIdInput = page.locator('input[name="Input.LoginId"], input[name="LoginId"], input[type="text"]').first();
+    const passwordInput = page.locator('input[name="Input.Password"], input[name="Password"], input[type="password"]').first();
+    if (await loginIdInput.count() && await passwordInput.count()) {
+      loginAttempt = "submitted";
+      await loginIdInput.fill(LOGIN_ID);
+      await passwordInput.fill(PASSWORD);
+      await Promise.all([
+        page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {}),
+        passwordInput.press("Enter"),
+      ]);
+      await page.waitForTimeout(2000);
+      pageTitle = await page.title().catch(() => "");
+      pageUrl = page.url();
+      loginAttempt = `submitted finalUrl=${pageUrl} title=${pageTitle || "none"}`;
+    } else if (/ログイン|Login/i.test(pageTitle) || /Account\/Login/i.test(pageUrl)) {
+      loginAttempt = "login page found but inputs not found";
+    }
+
     await Promise.race([
       new Promise((resolve) => setTimeout(resolve, 45000)),
       new Promise((resolve) => {
@@ -549,7 +569,7 @@ const fetchBrowserGraphHubData = async () => {
   const previews = observedMessages.join(" | ") || "none";
   return dataFromGraphs(
     latestByLabel,
-    `Browser GraphHub capture did not return WBGT data. page=${pageStatus}; finalUrl=${pageUrl}; title=${pageTitle || "none"}; frames=${frameCount}; targets=${targets}; labels=${labels}; previews=${previews}`,
+    `Browser GraphHub capture did not return WBGT data. page=${pageStatus}; finalUrl=${pageUrl}; title=${pageTitle || "none"}; login=${loginAttempt}; frames=${frameCount}; targets=${targets}; labels=${labels}; previews=${previews}`,
   );
 };
 
