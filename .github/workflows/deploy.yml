@@ -5,7 +5,8 @@ on:
     branches:
       - main
   schedule:
-    - cron: "*/5 * * * *"
+    # Every 5 minutes, offset from :00 to reduce GitHub cron congestion.
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -14,8 +15,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pages-${{ github.event_name }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
