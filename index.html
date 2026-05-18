@@ -38,7 +38,7 @@
     .fortuneTicker {
       position: relative;
       z-index: 2;
-      height: 52px;
+      height: 62px;
       overflow: hidden;
       border-bottom: 1px solid rgba(20,37,31,.12);
       background: rgba(18,36,31,.94);
@@ -58,7 +58,7 @@
     .fortuneCard b,
     .fortuneCard em,
     .fortuneCard i {
-      font-size: clamp(18px, 1.35vw, 25px);
+      font-size: clamp(20px, 1.55vw, 29px);
       color: #fff;
       font-weight: 800;
       line-height: 1;
@@ -66,7 +66,7 @@
     }
     .fortuneCard strong {
       color: #f7d77e;
-      font-size: clamp(18px, 1.35vw, 25px);
+      font-size: clamp(20px, 1.55vw, 29px);
       font-weight: 900;
     }
     .fortuneCard b {
@@ -125,6 +125,9 @@
       font-size: clamp(22px, 2vw, 32px);
       font-weight: 600;
       line-height: 1.8;
+    }
+    .message span {
+      display: block;
     }
     .metaRow {
       display: grid;
@@ -328,7 +331,7 @@
     <div class="welcome">
       <p class="kicker">Kushima Junior High School</p>
       <h1>ようこそ<span>串間市立串間中学校へ</span></h1>
-      <p class="message">本日はご来校いただきありがとうございます。校内では安全に配慮し、熱中症予防のため暑さ指数を確認しています。</p>
+      <p class="message"><span>本日はご来校いただきありがとうございます。</span><span>校内では安全に配慮し、熱中症予防のため暑さ指数を確認しています。</span></p>
       <div class="metaRow">
         <div><span id="dateLabel">2026年5月16日 土曜日</span><strong id="timeLabel">10:30</strong></div>
       </div>
