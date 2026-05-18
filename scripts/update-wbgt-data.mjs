@@ -491,6 +491,9 @@ const fetchBrowserGraphHubData = async () => {
   const observedLabels = new Set();
   const observedMessages = [];
   let frameCount = 0;
+  let pageStatus = "not loaded";
+  let pageTitle = "";
+  let pageUrl = BASE_URL;
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
@@ -522,7 +525,10 @@ const fetchBrowserGraphHubData = async () => {
       });
     });
 
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+    const response = await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+    pageStatus = response ? `${response.status()} ${response.url()}` : "no response";
+    pageTitle = await page.title().catch(() => "");
+    pageUrl = page.url();
     await Promise.race([
       new Promise((resolve) => setTimeout(resolve, 45000)),
       new Promise((resolve) => {
@@ -543,7 +549,7 @@ const fetchBrowserGraphHubData = async () => {
   const previews = observedMessages.join(" | ") || "none";
   return dataFromGraphs(
     latestByLabel,
-    `Browser GraphHub capture did not return WBGT data. frames=${frameCount}; targets=${targets}; labels=${labels}; previews=${previews}`,
+    `Browser GraphHub capture did not return WBGT data. page=${pageStatus}; finalUrl=${pageUrl}; title=${pageTitle || "none"}; frames=${frameCount}; targets=${targets}; labels=${labels}; previews=${previews}`,
   );
 };
 

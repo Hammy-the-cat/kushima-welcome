@@ -36,7 +36,7 @@ jobs:
 
       - name: Update WBGT data
         run: node scripts/update-wbgt-data.mjs
-        timeout-minutes: 2
+        timeout-minutes: 4
         env:
           WBGT_LOGIN_ID: ${{ secrets.WBGT_LOGIN_ID }}
           WBGT_PASSWORD: ${{ secrets.WBGT_PASSWORD }}
