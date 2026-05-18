@@ -1,9 +1,9 @@
-name: Deploy static site to GitHub Pages
+name: Update WBGT data automatically
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    # Every 5 minutes, offset from :00 to reduce GitHub cron congestion.
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -12,11 +12,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages-${{ github.event_name }}
+  group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  update-and-deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
