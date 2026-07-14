@@ -14,6 +14,8 @@ const LOGIN_ID = envValue("WBGT_LOGIN_ID");
 const PASSWORD = envValue("WBGT_PASSWORD");
 const DATA_URL = envValue("WBGT_DATA_URL");
 const OUTPUT_PATH = process.env.WBGT_OUTPUT_PATH ?? "wbgt-live.json";
+const configuredAttempts = Number(envValue("WBGT_UPDATE_ATTEMPTS") ?? 2);
+const UPDATE_ATTEMPTS = Number.isInteger(configuredAttempts) && configuredAttempts > 0 ? configuredAttempts : 2;
 const BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36";
 
 const demoData = {
@@ -28,6 +30,7 @@ const demoData = {
 };
 
 const nowIso = () => new Date().toISOString();
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const writeJson = async (data) => {
   await writeFile(OUTPUT_PATH, `${JSON.stringify({ ...data, updatedAt: nowIso() }, null, 2)}\n`, "utf8");
@@ -746,15 +749,29 @@ const loginAndFetchHtml = async () => {
   return parsePayload(html);
 };
 
-try {
-  const data = DATA_URL ? await fetchDataUrl() : await loginAndFetchHtml();
-  await writeJson(data);
-  console.log(`WBGT update status: ${data.status}`);
-} catch (error) {
-  await writeJson({
-    ...demoData,
-    status: "error",
-    message: error instanceof Error ? error.message : "WBGT更新に失敗しました。",
-  });
-  console.error(error);
+let lastError;
+
+for (let attempt = 1; attempt <= UPDATE_ATTEMPTS; attempt += 1) {
+  try {
+    const data = DATA_URL ? await fetchDataUrl() : await loginAndFetchHtml();
+    if (data.status !== "ok") {
+      throw new Error(data.message || `WBGT update returned status: ${data.status}`);
+    }
+
+    await writeJson(data);
+    console.log(`WBGT update status: ${data.status} (attempt ${attempt}/${UPDATE_ATTEMPTS})`);
+    lastError = undefined;
+    break;
+  } catch (error) {
+    lastError = error instanceof Error ? error : new Error("WBGT更新に失敗しました。");
+    console.warn(`WBGT update attempt ${attempt}/${UPDATE_ATTEMPTS} failed: ${lastError.message}`);
+    if (attempt < UPDATE_ATTEMPTS) {
+      await wait(10_000);
+    }
+  }
+}
+
+if (lastError) {
+  console.error(`WBGT update failed after ${UPDATE_ATTEMPTS} attempts: ${lastError.message}`);
+  process.exitCode = 1;
 }
